@@ -17,27 +17,64 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get all channels - no restrictions
-    const { data: channels, error } = await supabase
-      .from('channels')
-      .select(`
-        *,
-        participants:channel_members!inner(
-          user:users(id, username, avatar, is_online)
-        ),
-        last_message:messages(content, created_at)
-      `)
-      .eq('is_archived', false)
-      .order('last_message_at', { ascending: false, nullsFirst: false });
+    // Determine if user is admin
+    const isAdmin = AuthService.isAdminUser(auth.username);
 
-    if (error) {
-      throw error;
+    let channels = [];
+
+    if (isAdmin) {
+      // Admin can see all channels
+      const { data: allChannels, error } = await supabase
+        .from('channels')
+        .select(`
+          *,
+          participants:channel_members!inner(
+            user:users(id, username, avatar, is_online)
+          ),
+          last_message:messages(content, created_at)
+        `)
+        .eq('is_archived', false)
+        .order('last_message_at', { ascending: false, nullsFirst: false });
+
+      if (error) {
+        throw error;
+      }
+
+      channels = allChannels || [];
+    } else {
+      // Regular users can only see channels where they are members AND there's at least one admin
+      const { data: userChannels, error } = await supabase
+        .from('channel_members')
+        .select(`
+          channel:channels!inner(
+            *,
+            participants:channel_members!inner(
+              user:users(id, username, avatar, is_online)
+            ),
+            last_message:messages(content, created_at)
+          )
+        `)
+        .eq('user_id', auth.userId)
+        .eq('channels.is_archived', false);
+
+      if (error) {
+        throw error;
+      }
+
+      // Filter channels to only include those with admin participants
+      channels = (userChannels || [])
+        .map(item => item.channel)
+        .filter(channel => 
+          channel.participants?.some((participant: any) => 
+            AuthService.isAdminUser(participant.user.username)
+          )
+        );
     }
 
     return NextResponse.json({ 
-      channels: channels || [],
-      isAdmin: true, // Everyone is admin
-      total: (channels || []).length
+      channels,
+      isAdmin,
+      total: channels.length
     });
   } catch (error) {
     console.error('Get channels error:', error);
@@ -57,6 +94,13 @@ export async function POST(request: NextRequest) {
     const auth = AuthService.verifyToken(token);
     if (!auth) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    // Only admin users can create channels
+    if (!AuthService.isAdminUser(auth.username)) {
+      return NextResponse.json({ 
+        error: 'Only admin users can create channels' 
+      }, { status: 403 });
     }
 
     const { name, description, type = 'public', participantUsernames = [] } = await request.json();
@@ -92,7 +136,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
       is_archived: false,
       settings: {
-        encryption: false, // Disabled for simplicity
+        encryption: true,
         read_receipts: true,
         typing_indicators: true,
       },

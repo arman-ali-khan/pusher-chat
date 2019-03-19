@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
+import { MessageCrypto } from '@/lib/crypto';
 import { sanitizeMessage } from '@/lib/sanitizer';
+import { rateLimit } from '@/lib/rate-limiter';
 import { pusherServer } from '@/lib/pusher';
 import { supabase } from '@/lib/supabase';
 
@@ -18,32 +20,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    // Rate limiting
+    const limitResult = rateLimit(`messages:${auth.username}`, 30, 60000); // 30 messages per minute
+    if (!limitResult.success) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
+    }
+
     const { channelId, content, messageType = 'text', replyTo, signature } = await request.json();
 
     if (!channelId || !content) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Check if user has access to channel (simplified - just check if channel exists)
-    const { data: channel, error: channelError } = await supabase
-      .from('channels')
-      .select('*')
-      .eq('id', channelId)
+    // Check if user has access to channel
+    const { data: membership, error: membershipError } = await supabase
+      .from('channel_members')
+      .select('*, channel:channels(*)')
+      .eq('channel_id', channelId)
+      .eq('user_id', auth.userId)
       .single();
 
-    if (channelError || !channel) {
-      return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
+    if (membershipError || !membership) {
+      return NextResponse.json({ error: 'Channel not found or access denied' }, { status: 404 });
     }
+
+    const channel = membership.channel;
 
     // Sanitize content
     const sanitizedContent = sanitizeMessage(content);
 
-    // Create message (no encryption for simplicity)
+    // Encrypt message if channel has encryption enabled
+    let encryptedContent;
+    if (channel.settings.encryption) {
+      encryptedContent = MessageCrypto.encrypt(sanitizedContent, auth.username, channelId);
+    }
+
+    // Create message
     const messageData = {
       channel_id: channelId,
       sender_id: auth.userId,
       sender_username: auth.username,
       content: sanitizedContent,
+      encrypted_content: encryptedContent,
       signature: signature || 'simple-auth',
       message_type: messageType,
       reply_to: replyTo || null,
@@ -127,16 +145,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Channel ID required' }, { status: 400 });
     }
 
-    // Check if channel exists (simplified)
-    const { data: channel, error: channelError } = await supabase
-      .from('channels')
-      .select('*')
-      .eq('id', channelId)
+    // Check access to channel
+    const { data: membership, error: membershipError } = await supabase
+      .from('channel_members')
+      .select('*, channel:channels(*)')
+      .eq('channel_id', channelId)
+      .eq('user_id', auth.userId)
       .single();
 
-    if (channelError || !channel) {
-      return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
+    if (membershipError || !membership) {
+      return NextResponse.json({ error: 'Channel not found or access denied' }, { status: 404 });
     }
+
+    const channel = membership.channel;
 
     // Get messages with pagination
     const { data: messages, error: messagesError } = await supabase
@@ -154,9 +175,23 @@ export async function GET(request: NextRequest) {
       throw messagesError;
     }
 
+    // Decrypt messages if needed
+    const decryptedMessages = (messages || []).map(msg => {
+      if (msg.encrypted_content && channel.settings.encryption) {
+        try {
+          const decryptedContent = MessageCrypto.decrypt(msg.encrypted_content, auth.username, channelId);
+          return { ...msg, content: decryptedContent };
+        } catch (error) {
+          // If decryption fails, keep original content
+          return msg;
+        }
+      }
+      return msg;
+    });
+
     return NextResponse.json({ 
-      messages: (messages || []).reverse(),
-      hasMore: (messages || []).length === limit,
+      messages: decryptedMessages.reverse(),
+      hasMore: messages?.length === limit,
       page,
     });
   } catch (error) {

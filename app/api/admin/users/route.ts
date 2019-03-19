@@ -17,7 +17,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get all users - no restrictions
+    // Check if user has admin privileges
+    if (!AdminService.hasAdminPermission(auth.username, 'view_all_users')) {
+      return NextResponse.json(
+        { error: 'Access denied. Admin privileges required.' },
+        { status: 403 }
+      );
+    }
+
+    // Get all users with their basic information
     const { data: users, error } = await supabase
       .from('users')
       .select(`
@@ -36,10 +44,13 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    // Apply visibility filtering based on user role
+    const filteredUsers = AdminService.filterUserVisibility(users || [], auth.username);
+
     return NextResponse.json({
-      users: users || [],
-      total: (users || []).length,
-      isAdmin: true // Everyone is admin
+      users: filteredUsers,
+      total: filteredUsers.length,
+      isAdmin: AdminService.isAdminUser(auth.username)
     });
 
   } catch (error) {

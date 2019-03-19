@@ -8,13 +8,13 @@ export interface AuthPayload {
 }
 
 export class AuthService {
-  private static JWT_SECRET = process.env.JWT_SECRET || 'simple-chat-secret-key';
+  private static JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
   static generateToken(username: string, userId: string): string {
     return jwt.sign(
       { username, userId },
       this.JWT_SECRET,
-      { expiresIn: '30d' } // Extended to 30 days for convenience
+      { expiresIn: '7d' }
     );
   }
 
@@ -27,39 +27,44 @@ export class AuthService {
   }
 
   static validateUsername(username: string): boolean {
-    // Simplified username validation
+    // Username validation rules:
+    // - Must be 3-20 characters long
+    // - Can only contain letters, numbers, and underscores
+    // - Cannot be empty or just whitespace
     if (!username || typeof username !== 'string') {
       return false;
     }
 
     const trimmed = username.trim();
     
-    if (trimmed.length < 2 || trimmed.length > 30) {
+    if (trimmed.length < 3 || trimmed.length > 20) {
       return false;
     }
 
-    // Allow more characters for flexibility
-    const usernameRegex = /^[a-zA-Z0-9_\-\.]+$/;
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
     return usernameRegex.test(trimmed);
   }
 
   static validatePhoneNumber(phone: string): boolean {
-    // Phone number is optional and very permissive
+    // Phone number validation (optional field)
     if (!phone || typeof phone !== 'string') {
-      return true;
+      return true; // Phone is optional, so empty/null is valid
     }
 
     const trimmed = phone.trim();
     if (trimmed === '') {
-      return true;
+      return true; // Empty string is valid for optional field
     }
 
-    // Very permissive phone validation
-    return trimmed.length >= 5 && trimmed.length <= 20;
+    // Basic international phone number validation
+    // Allows: +1234567890, (123) 456-7890, 123-456-7890, 123 456 7890, etc.
+    const phoneRegex = /^\+?[\d\s\-\(\)]{10,15}$/;
+    return phoneRegex.test(trimmed);
   }
 
   static sanitizeUsername(username: string): string {
-    return username.trim();
+    // Remove any potentially harmful characters and trim whitespace
+    return username.trim().replace(/[^a-zA-Z0-9_]/g, '');
   }
 
   static sanitizePhoneNumber(phone: string): string | null {
@@ -68,6 +73,17 @@ export class AuthService {
     }
 
     const trimmed = phone.trim();
-    return trimmed === '' ? null : trimmed;
+    if (trimmed === '') {
+      return null;
+    }
+
+    // Remove any characters that aren't digits, spaces, hyphens, parentheses, or plus signs
+    return trimmed.replace(/[^\d\s\-\(\)\+]/g, '');
+  }
+
+  static isAdminUser(username: string): boolean {
+    // Define admin usernames
+    const adminUsernames = ['admin', 'administrator', 'root', 'superuser'];
+    return adminUsernames.includes(username.toLowerCase());
   }
 }
