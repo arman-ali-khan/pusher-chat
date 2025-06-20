@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
+import { AdminService } from '@/lib/admin';
 import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
@@ -20,14 +21,23 @@ export async function GET(request: NextRequest) {
     const client = await clientPromise;
     const db = client.db('web3chat');
 
-    // Get user's channels
+    // Determine if user is admin
+    const isAdmin = AdminService.isAdminUser(auth.username);
+
+    let matchCondition: any = {
+      isArchived: false,
+    };
+
+    // If not admin, only show channels user participates in
+    if (!isAdmin) {
+      matchCondition.participants = new ObjectId(auth.userId);
+    }
+
+    // Get user's channels with enhanced filtering
     const channels = await db.collection('channels')
       .aggregate([
         {
-          $match: {
-            participants: new ObjectId(auth.userId),
-            isArchived: false,
-          }
+          $match: matchCondition
         },
         {
           $lookup: {
@@ -90,7 +100,14 @@ export async function GET(request: NextRequest) {
       ])
       .toArray();
 
-    return NextResponse.json({ channels });
+    // Apply additional filtering based on user permissions
+    const filteredChannels = AdminService.filterChannelVisibility(channels, auth.username);
+
+    return NextResponse.json({ 
+      channels: filteredChannels,
+      isAdmin,
+      total: filteredChannels.length
+    });
   } catch (error) {
     console.error('Get channels error:', error);
     return NextResponse.json({ error: 'Failed to get channels' }, { status: 500 });

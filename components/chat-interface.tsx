@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { AdminUserList } from '@/components/admin-user-list';
 import { 
   Send, 
   Users, 
@@ -20,7 +21,9 @@ import {
   Paperclip,
   MoreHorizontal,
   User,
-  Phone
+  Phone,
+  Crown,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { pusherClient } from '@/lib/pusher';
@@ -73,10 +76,14 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
   const [isSending, setIsSending] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [showUserList, setShowUserList] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
+    checkAdminStatus();
     loadChannels();
     setupPusher();
     
@@ -96,6 +103,17 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
     scrollToBottom();
   }, [messages]);
 
+  const checkAdminStatus = () => {
+    const adminUsernames = ['admin', 'administrator', 'root', 'superuser'];
+    const userIsAdmin = adminUsernames.includes(user.username.toLowerCase());
+    setIsAdmin(userIsAdmin);
+  };
+
+  const isAdminUser = (username: string) => {
+    const adminUsernames = ['admin', 'administrator', 'root', 'superuser'];
+    return adminUsernames.includes(username.toLowerCase());
+  };
+
   const loadChannels = async () => {
     try {
       const response = await fetch('/api/channels', {
@@ -108,8 +126,29 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
       
       if (response.ok) {
         setChannels(data.channels);
+        setIsAdmin(data.isAdmin);
+        
         if (data.channels.length > 0) {
           setCurrentChannel(data.channels[0]);
+        }
+
+        // Show access notification for non-admin users
+        if (!data.isAdmin && data.channels.length === 0) {
+          setAccessDenied(true);
+          toast({
+            title: 'Limited Access',
+            description: 'You can only see channels with admin participants.',
+            variant: 'default',
+          });
+        }
+      } else {
+        if (response.status === 403) {
+          setAccessDenied(true);
+          toast({
+            title: 'Access Restricted',
+            description: 'Your access to channels is limited.',
+            variant: 'destructive',
+          });
         }
       }
     } catch (error) {
@@ -207,7 +246,7 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
         body: JSON.stringify({
           channelId: currentChannel._id,
           content: newMessage,
-          signature: 'simple-auth', // Simple signature for username auth
+          signature: 'simple-auth',
         }),
       });
 
@@ -261,12 +300,19 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
               <div className="flex items-center space-x-3">
                 <Avatar className="h-10 w-10">
                   <AvatarImage src={user.avatar} />
-                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                  <AvatarFallback className={`${
+                    isAdmin 
+                      ? 'bg-gradient-to-r from-orange-500 to-red-600' 
+                      : 'bg-gradient-to-r from-blue-500 to-purple-600'
+                  } text-white`}>
                     {user.username.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-semibold text-gray-900 dark:text-white">{user.username}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-gray-900 dark:text-white">{user.username}</p>
+                    {isAdmin && <Crown className="h-4 w-4 text-orange-500" />}
+                  </div>
                   {user.phoneNumber && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                       <Phone className="h-3 w-3" />
@@ -286,16 +332,41 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
             </div>
           </div>
 
+          {/* Admin Status */}
+          {isAdmin && (
+            <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-200">
+              <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
+                <Shield className="h-4 w-4" />
+                <span className="text-sm font-medium">Admin Access Active</span>
+              </div>
+            </div>
+          )}
+
+          {/* Access Denied Warning */}
+          {accessDenied && !isAdmin && (
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200">
+              <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm">Limited channel access</span>
+              </div>
+            </div>
+          )}
+
           {/* Channels */}
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 dark:text-white">Channels</h3>
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setShowUserList(!showUserList)}
+                className={isAdmin ? 'text-orange-600 hover:text-orange-700' : ''}
+              >
                 <Users className="h-4 w-4" />
               </Button>
             </div>
             
-            <ScrollArea className="h-[calc(100vh-200px)]">
+            <ScrollArea className="h-[calc(100vh-300px)]">
               <div className="space-y-2">
                 {channels.map((channel) => (
                   <motion.div
@@ -322,6 +393,13 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
                           <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                             {channel.lastMessage?.content || 'No messages yet'}
                           </p>
+                          {/* Show admin participants indicator */}
+                          {channel.participants?.some((p: any) => isAdminUser(p.username)) && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Crown className="h-3 w-3 text-orange-500" />
+                              <span className="text-xs text-orange-600">Admin present</span>
+                            </div>
+                          )}
                         </div>
                         {channel.settings?.encryption && (
                           <Shield className="h-4 w-4 text-green-500" />
@@ -330,14 +408,32 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
                     </Card>
                   </motion.div>
                 ))}
+
+                {channels.length === 0 && (
+                  <div className="text-center py-8">
+                    <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">
+                      {isAdmin ? 'No channels available' : 'No accessible channels found'}
+                    </p>
+                    {!isAdmin && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        You can only access channels with admin participants
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </div>
         </div>
 
-        {/* Main Chat */}
+        {/* Main Content */}
         <div className="flex-1 flex flex-col">
-          {currentChannel ? (
+          {showUserList ? (
+            <div className="flex-1 p-6">
+              <AdminUserList token={token} currentUser={user} />
+            </div>
+          ) : currentChannel ? (
             <>
               {/* Chat Header */}
               <div className="p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-white/20">
@@ -382,7 +478,11 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
                       >
                         <Avatar className="h-10 w-10 mt-1">
                           <AvatarImage src={message.sender.avatar} />
-                          <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                          <AvatarFallback className={`${
+                            isAdminUser(message.sender.username)
+                              ? 'bg-gradient-to-r from-orange-500 to-red-600'
+                              : 'bg-gradient-to-r from-blue-500 to-purple-600'
+                          } text-white`}>
                             {message.sender.username.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
@@ -391,6 +491,9 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
                             <p className="font-semibold text-gray-900 dark:text-white">
                               {message.sender.username}
                             </p>
+                            {isAdminUser(message.sender.username) && (
+                              <Crown className="h-4 w-4 text-orange-500" />
+                            )}
                             <p className="text-xs text-gray-500 dark:text-gray-400">
                               {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
                             </p>
@@ -475,8 +578,13 @@ export function ChatInterface({ user, token, onDisconnect }: ChatInterfaceProps)
                   Welcome to Web3 Chat
                 </h3>
                 <p className="text-gray-500 dark:text-gray-400">
-                  Select a channel to start chatting
+                  {isAdmin ? 'Select a channel to start chatting' : 'No accessible channels available'}
                 </p>
+                {!isAdmin && (
+                  <p className="text-sm text-gray-400 mt-2">
+                    Contact an admin to gain access to channels
+                  </p>
+                )}
               </div>
             </div>
           )}
