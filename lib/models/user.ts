@@ -1,32 +1,30 @@
-import { ObjectId } from 'mongodb';
-
 export interface User {
-  _id?: ObjectId;
+  id?: string;
   username: string;
-  phoneNumber?: string;
-  ensName?: string;
+  phone_number?: string;
+  ens_name?: string;
   avatar?: string;
   bio?: string;
-  isOnline: boolean;
-  lastSeen: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  is_online: boolean;
+  last_seen: string;
+  created_at: string;
+  updated_at: string;
   reputation: number;
-  blockedUsers: string[];
+  blocked_users: string[];
   settings: {
     notifications: boolean;
-    darkMode: boolean;
+    dark_mode: boolean;
     encryption: boolean;
   };
 }
 
 export interface UserSession {
-  _id?: ObjectId;
-  userId: ObjectId;
+  id?: string;
+  user_id: string;
   username: string;
   token: string;
-  expiresAt: Date;
-  createdAt: Date;
-  ipAddress: string;
-  userAgent: string;
+  expires_at: string;
+  created_at: string;
+  ip_address: string;
+  user_agent: string;
 }

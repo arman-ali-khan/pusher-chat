@@ -4,8 +4,7 @@ import { MessageCrypto } from '@/lib/crypto';
 import { sanitizeMessage } from '@/lib/sanitizer';
 import { rateLimit } from '@/lib/rate-limiter';
 import { pusherServer } from '@/lib/pusher';
-import clientPromise from '@/lib/mongodb';
-import { ObjectId } from 'mongodb';
+import { supabase } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,18 +32,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const client = await clientPromise;
-    const db = client.db('web3chat');
-
     // Check if user has access to channel
-    const channel = await db.collection('channels').findOne({
-      _id: new ObjectId(channelId),
-      participants: new ObjectId(auth.userId),
-    });
+    const { data: membership, error: membershipError } = await supabase
+      .from('channel_members')
+      .select('*, channel:channels(*)')
+      .eq('channel_id', channelId)
+      .eq('user_id', auth.userId)
+      .single();
 
-    if (!channel) {
+    if (membershipError || !membership) {
       return NextResponse.json({ error: 'Channel not found or access denied' }, { status: 404 });
     }
+
+    const channel = membership.channel;
 
     // Sanitize content
     const sanitizedContent = sanitizeMessage(content);
@@ -56,51 +56,66 @@ export async function POST(request: NextRequest) {
     }
 
     // Create message
-    const message = {
-      channelId: new ObjectId(channelId),
-      senderId: new ObjectId(auth.userId),
-      senderUsername: auth.username,
+    const messageData = {
+      channel_id: channelId,
+      sender_id: auth.userId,
+      sender_username: auth.username,
       content: sanitizedContent,
-      ...(encryptedContent && { encryptedContent }),
+      encrypted_content: encryptedContent,
       signature: signature || 'simple-auth',
-      messageType,
-      ...(replyTo && { replyTo: new ObjectId(replyTo) }),
+      message_type: messageType,
+      reply_to: replyTo || null,
       mentions: [],
       reactions: [],
-      isEdited: false,
-      isDeleted: false,
-      createdAt: new Date(),
-      deliveredTo: [],
-      readBy: [],
+      is_edited: false,
+      is_deleted: false,
+      created_at: new Date().toISOString(),
+      delivered_to: [],
+      read_by: [],
     };
 
-    const result = await db.collection('messages').insertOne(message);
+    const { data: message, error: messageError } = await supabase
+      .from('messages')
+      .insert(messageData)
+      .select()
+      .single();
+
+    if (messageError) {
+      throw messageError;
+    }
     
     // Update channel last message time
-    await db.collection('channels').updateOne(
-      { _id: new ObjectId(channelId) },
-      { 
-        $set: { lastMessageAt: new Date() },
-        $inc: { messageCount: 1 }
-      }
-    );
+    const { error: updateError } = await supabase
+      .from('channels')
+      .update({ 
+        last_message_at: new Date().toISOString(),
+        message_count: channel.message_count + 1
+      })
+      .eq('id', channelId);
+
+    if (updateError) {
+      console.error('Failed to update channel:', updateError);
+    }
 
     // Get sender info
-    const sender = await db.collection('users').findOne({ _id: new ObjectId(auth.userId) });
+    const { data: sender } = await supabase
+      .from('users')
+      .select('username, avatar')
+      .eq('id', auth.userId)
+      .single();
 
     // Broadcast message to channel
-    const messageData = {
+    const messageData_broadcast = {
       ...message,
-      _id: result.insertedId,
       sender: {
         username: sender?.username,
         avatar: sender?.avatar,
       },
     };
 
-    await pusherServer.trigger(`channel-${channelId}`, 'new-message', messageData);
+    await pusherServer.trigger(`channel-${channelId}`, 'new-message', messageData_broadcast);
 
-    return NextResponse.json({ message: messageData });
+    return NextResponse.json({ message: messageData_broadcast });
   } catch (error) {
     console.error('Send message error:', error);
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
@@ -130,71 +145,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Channel ID required' }, { status: 400 });
     }
 
-    const client = await clientPromise;
-    const db = client.db('web3chat');
-
     // Check access to channel
-    const channel = await db.collection('channels').findOne({
-      _id: new ObjectId(channelId),
-      participants: new ObjectId(auth.userId),
-    });
+    const { data: membership, error: membershipError } = await supabase
+      .from('channel_members')
+      .select('*, channel:channels(*)')
+      .eq('channel_id', channelId)
+      .eq('user_id', auth.userId)
+      .single();
 
-    if (!channel) {
+    if (membershipError || !membership) {
       return NextResponse.json({ error: 'Channel not found or access denied' }, { status: 404 });
     }
 
+    const channel = membership.channel;
+
     // Get messages with pagination
-    const messages = await db.collection('messages')
-      .aggregate([
-        {
-          $match: {
-            channelId: new ObjectId(channelId),
-            isDeleted: false,
-          }
-        },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'senderId',
-            foreignField: '_id',
-            as: 'sender',
-          }
-        },
-        {
-          $unwind: '$sender'
-        },
-        {
-          $sort: { createdAt: -1 }
-        },
-        {
-          $skip: (page - 1) * limit
-        },
-        {
-          $limit: limit
-        },
-        {
-          $project: {
-            _id: 1,
-            content: 1,
-            encryptedContent: 1,
-            messageType: 1,
-            signature: 1,
-            createdAt: 1,
-            replyTo: 1,
-            reactions: 1,
-            isEdited: 1,
-            'sender.username': 1,
-            'sender.avatar': 1,
-          }
-        }
-      ])
-      .toArray();
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:users!sender_id(username, avatar)
+      `)
+      .eq('channel_id', channelId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+
+    if (messagesError) {
+      throw messagesError;
+    }
 
     // Decrypt messages if needed
-    const decryptedMessages = messages.map(msg => {
-      if (msg.encryptedContent && channel.settings.encryption) {
+    const decryptedMessages = (messages || []).map(msg => {
+      if (msg.encrypted_content && channel.settings.encryption) {
         try {
-          const decryptedContent = MessageCrypto.decrypt(msg.encryptedContent, auth.username, channelId);
+          const decryptedContent = MessageCrypto.decrypt(msg.encrypted_content, auth.username, channelId);
           return { ...msg, content: decryptedContent };
         } catch (error) {
           // If decryption fails, keep original content
@@ -206,7 +191,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ 
       messages: decryptedMessages.reverse(),
-      hasMore: messages.length === limit,
+      hasMore: messages?.length === limit,
       page,
     });
   } catch (error) {

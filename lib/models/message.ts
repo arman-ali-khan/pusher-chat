@@ -1,24 +1,22 @@
-import { ObjectId } from 'mongodb';
-
 export interface Message {
-  _id?: ObjectId;
-  channelId: ObjectId;
-  senderId: ObjectId;
-  senderAddress: string;
+  id?: string;
+  channel_id: string;
+  sender_id: string;
+  sender_username: string;
   content: string;
-  encryptedContent?: string;
+  encrypted_content?: string;
   signature: string;
-  messageType: 'text' | 'image' | 'file' | 'emoji';
-  replyTo?: ObjectId;
+  message_type: 'text' | 'image' | 'file' | 'emoji';
+  reply_to?: string;
   mentions: string[];
   reactions: Reaction[];
-  isEdited: boolean;
-  editedAt?: Date;
-  isDeleted: boolean;
-  deletedAt?: Date;
-  createdAt: Date;
-  deliveredTo: string[];
-  readBy: ReadReceipt[];
+  is_edited: boolean;
+  edited_at?: string;
+  is_deleted: boolean;
+  deleted_at?: string;
+  created_at: string;
+  delivered_to: string[];
+  read_by: ReadReceipt[];
 }
 
 export interface Reaction {
@@ -28,13 +26,13 @@ export interface Reaction {
 }
 
 export interface ReadReceipt {
-  userId: ObjectId;
-  readAt: Date;
+  user_id: string;
+  read_at: string;
 }
 
 export interface TypingIndicator {
-  channelId: string;
-  userId: string;
+  channel_id: string;
+  user_id: string;
   username: string;
-  timestamp: Date;
+  timestamp: string;
 }

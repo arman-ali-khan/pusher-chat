@@ -1,33 +1,31 @@
-import { ObjectId } from 'mongodb';
-
 export interface Channel {
-  _id?: ObjectId;
+  id?: string;
   name: string;
   description?: string;
   type: 'public' | 'private' | 'direct';
-  participants: ObjectId[];
-  admins: ObjectId[];
-  createdBy: ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
-  lastMessageAt?: Date;
-  isArchived: boolean;
+  participants: string[];
+  admins: string[];
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  last_message_at?: string;
+  is_archived: boolean;
   settings: {
     encryption: boolean;
-    readReceipts: boolean;
-    typingIndicators: boolean;
+    read_receipts: boolean;
+    typing_indicators: boolean;
   };
-  messageCount: number;
+  message_count: number;
 }
 
 export interface ChannelMember {
-  _id?: ObjectId;
-  channelId: ObjectId;
-  userId: ObjectId;
+  id?: string;
+  channel_id: string;
+  user_id: string;
   role: 'admin' | 'member';
-  joinedAt: Date;
-  lastReadMessageId?: ObjectId;
-  notificationSettings: {
+  joined_at: string;
+  last_read_message_id?: string;
+  notification_settings: {
     muted: boolean;
     mentions: boolean;
   };

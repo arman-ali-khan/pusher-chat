@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { AdminService } from '@/lib/admin';
-import clientPromise from '@/lib/mongodb';
-import { ObjectId } from 'mongodb';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,90 +17,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db('web3chat');
-
     // Determine if user is admin
     const isAdmin = AdminService.isAdminUser(auth.username);
 
-    let matchCondition: any = {
-      isArchived: false,
-    };
+    let query = supabase
+      .from('channels')
+      .select(`
+        *,
+        participants:channel_members!inner(
+          user:users(id, username, avatar, is_online)
+        ),
+        last_message:messages(content, created_at)
+      `)
+      .eq('is_archived', false);
 
     // If not admin, only show channels user participates in
     if (!isAdmin) {
-      matchCondition.participants = new ObjectId(auth.userId);
+      query = query.eq('channel_members.user_id', auth.userId);
     }
 
-    // Get user's channels with enhanced filtering
-    const channels = await db.collection('channels')
-      .aggregate([
-        {
-          $match: matchCondition
-        },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'participants',
-            foreignField: '_id',
-            as: 'participantUsers',
-          }
-        },
-        {
-          $lookup: {
-            from: 'messages',
-            let: { channelId: '$_id' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ['$channelId', '$$channelId'] },
-                  isDeleted: false,
-                }
-              },
-              {
-                $sort: { createdAt: -1 }
-              },
-              {
-                $limit: 1
-              }
-            ],
-            as: 'lastMessage',
-          }
-        },
-        {
-          $project: {
-            _id: 1,
-            name: 1,
-            type: 1,
-            description: 1,
-            messageCount: 1,
-            lastMessageAt: 1,
-            settings: 1,
-            participants: {
-              $map: {
-                input: '$participantUsers',
-                as: 'user',
-                in: {
-                  id: '$$user._id',
-                  username: '$$user.username',
-                  avatar: '$$user.avatar',
-                  isOnline: '$$user.isOnline',
-                }
-              }
-            },
-            lastMessage: {
-              $arrayElemAt: ['$lastMessage', 0]
-            }
-          }
-        },
-        {
-          $sort: { lastMessageAt: -1 }
-        }
-      ])
-      .toArray();
+    const { data: channels, error } = await query
+      .order('last_message_at', { ascending: false, nullsFirst: false });
+
+    if (error) {
+      throw error;
+    }
 
     // Apply additional filtering based on user permissions
-    const filteredChannels = AdminService.filterChannelVisibility(channels, auth.username);
+    const filteredChannels = AdminService.filterChannelVisibility(channels || [], auth.username);
 
     return NextResponse.json({ 
       channels: filteredChannels,
@@ -134,43 +77,72 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Channel name required' }, { status: 400 });
     }
 
-    const client = await clientPromise;
-    const db = client.db('web3chat');
-
     // Get participant user IDs
-    const participants = [new ObjectId(auth.userId)];
+    const participants = [auth.userId];
     
     if (participantUsernames.length > 0) {
-      const users = await db.collection('users').find({
-        username: { $in: participantUsernames }
-      }).toArray();
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id')
+        .in('username', participantUsernames);
       
-      participants.push(...users.map(user => user._id));
+      if (usersError) {
+        throw usersError;
+      }
+      
+      participants.push(...users.map(user => user.id));
     }
 
     // Create channel
-    const channel = {
+    const channelData = {
       name,
       description,
       type,
-      participants,
-      admins: [new ObjectId(auth.userId)],
-      createdBy: new ObjectId(auth.userId),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      isArchived: false,
+      admins: [auth.userId],
+      created_by: auth.userId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_archived: false,
       settings: {
         encryption: true,
-        readReceipts: true,
-        typingIndicators: true,
+        read_receipts: true,
+        typing_indicators: true,
       },
-      messageCount: 0,
+      message_count: 0,
     };
 
-    const result = await db.collection('channels').insertOne(channel);
+    const { data: channel, error: channelError } = await supabase
+      .from('channels')
+      .insert(channelData)
+      .select()
+      .single();
+
+    if (channelError) {
+      throw channelError;
+    }
+
+    // Add channel members
+    const memberData = participants.map(userId => ({
+      channel_id: channel.id,
+      user_id: userId,
+      role: userId === auth.userId ? 'admin' : 'member',
+      joined_at: new Date().toISOString(),
+      notification_settings: {
+        muted: false,
+        mentions: true,
+      },
+    }));
+
+    const { error: membersError } = await supabase
+      .from('channel_members')
+      .insert(memberData);
+
+    if (membersError) {
+      throw membersError;
+    }
 
     return NextResponse.json({ 
-      channel: { ...channel, _id: result.insertedId }
+      channel: { ...channel, participants }
     });
   } catch (error) {
     console.error('Create channel error:', error);

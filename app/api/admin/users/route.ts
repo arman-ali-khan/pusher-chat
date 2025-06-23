@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { AdminService } from '@/lib/admin';
-import clientPromise from '@/lib/mongodb';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,27 +25,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db('web3chat');
-
     // Get all users with their basic information
-    const users = await db.collection('users')
-      .find({}, {
-        projection: {
-          username: 1,
-          phoneNumber: 1,
-          isOnline: 1,
-          lastSeen: 1,
-          createdAt: 1,
-          reputation: 1,
-          settings: 1,
-        }
-      })
-      .sort({ createdAt: -1 })
-      .toArray();
+    const { data: users, error } = await supabase
+      .from('users')
+      .select(`
+        id,
+        username,
+        phone_number,
+        is_online,
+        last_seen,
+        created_at,
+        reputation,
+        settings
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
 
     // Apply visibility filtering based on user role
-    const filteredUsers = AdminService.filterUserVisibility(users, auth.username);
+    const filteredUsers = AdminService.filterUserVisibility(users || [], auth.username);
 
     return NextResponse.json({
       users: filteredUsers,
