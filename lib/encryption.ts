@@ -43,8 +43,8 @@ export async function serializeKeyPair(keyPair: KeyPair): Promise<SerializedKeyP
   const publicKeyBuffer = await window.crypto.subtle.exportKey('spki', keyPair.publicKey);
   const privateKeyBuffer = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
 
-  const publicKey = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
-  const privateKey = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
+  const publicKey = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(publicKeyBuffer))));
+  const privateKey = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(privateKeyBuffer))));
 
   return { publicKey, privateKey };
 }
@@ -100,7 +100,7 @@ export async function encryptMessage(message: string, publicKey: CryptoKey): Pro
     data
   );
   
-  return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+  return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(encrypted))));
 }
 
 /**
