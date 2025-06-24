@@ -45,7 +45,7 @@ export default function ChatInterface({
     }
   };
 
-  const handleSendMessage = async (content: string, type: 'text' | 'image' | 'emoji') => {
+  const handleSendMessage = async (content: string, type: 'text' | 'image') => {
     setSendingMessage(true);
     try {
       const success = await sendMessage(currentUsername, selectedUser, content, type);

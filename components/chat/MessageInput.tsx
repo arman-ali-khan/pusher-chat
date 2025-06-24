@@ -4,12 +4,12 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Send, Image, Smile, X, Upload } from 'lucide-react';
+import { Send, Image, X, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { setTypingStatus } from '@/lib/chat';
 
 interface MessageInputProps {
-  onSendMessage: (content: string, type: 'text' | 'image' | 'emoji') => void;
+  onSendMessage: (content: string, type: 'text' | 'image') => void;
   disabled?: boolean;
   isLoading?: boolean;
   currentUsername: string;
@@ -136,6 +136,11 @@ export default function MessageInput({
       onSendMessage(imagePreview, 'image');
       setImagePreview(null);
       setShowImageDialog(false);
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -147,38 +152,10 @@ export default function MessageInput({
     }
   };
 
-  const addEmoji = async (emoji: string) => {
-    // Stop typing status before sending
-    if (isTyping) {
-      await setTypingStatus(currentUsername, selectedUser, false);
-      setIsTyping(false);
-    }
-
-    onSendMessage(emoji, 'emoji');
-  };
-
-  const commonEmojis = ['😀', '😍', '🤔', '😢', '😡', '👍', '👎', '❤️', '🎉', '🔥'];
-
   return (
     <>
       <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="p-4 space-y-3">
-          {/* Emoji Bar */}
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {commonEmojis.map((emoji) => (
-              <Button
-                key={emoji}
-                variant="ghost"
-                size="sm"
-                className="text-lg hover:bg-accent flex-shrink-0"
-                onClick={() => addEmoji(emoji)}
-                disabled={disabled}
-              >
-                {emoji}
-              </Button>
-            ))}
-          </div>
-
+        <div className="p-4">
           {/* Message Input */}
           <div className="flex gap-2 items-end">
             <div className="flex-1">

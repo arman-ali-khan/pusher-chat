@@ -2,7 +2,7 @@
 
 import { Message } from '@/lib/chat';
 import { formatDistanceToNow } from 'date-fns';
-import { Image as ImageIcon, Smile, AlertCircle } from 'lucide-react';
+import { Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
@@ -56,12 +56,6 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
             )}
           </div>
         );
-      case 'emoji':
-        return (
-          <div className="flex items-center gap-2">
-            <span className="text-3xl">{message.content}</span>
-          </div>
-        );
       default:
         return <span className="whitespace-pre-wrap break-words">{message.content}</span>;
     }
@@ -86,7 +80,6 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
           )}>
             <span>{formatTime(message.timestamp)}</span>
             {message.content_type === 'image' && <ImageIcon className="h-3 w-3" />}
-            {message.content_type === 'emoji' && <Smile className="h-3 w-3" />}
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ export interface Message {
   sender_username: string;
   receiver_username: string;
   content: string;
-  content_type: 'text' | 'image' | 'emoji';
+  content_type: 'text' | 'image';
   timestamp: string;
   decrypted?: boolean;
 }
@@ -25,46 +25,56 @@ export interface TypingStatus {
 }
 
 /**
- * Send encrypted message to another user
+ * Send message to another user (encrypted for text, plain base64 for images)
  */
 export async function sendMessage(
   senderUsername: string,
   receiverUsername: string,
   content: string,
-  contentType: 'text' | 'image' | 'emoji' = 'text'
+  contentType: 'text' | 'image' = 'text'
 ): Promise<boolean> {
   try {
-    // Get receiver's public key
-    const { data: receiver, error: receiverError } = await supabase
-      .from('users')
-      .select('public_key')
-      .eq('username', receiverUsername)
-      .single();
+    let encryptedForReceiver: string;
+    let encryptedForSender: string;
 
-    if (receiverError || !receiver) {
-      console.error('Receiver not found:', receiverError);
-      return false;
+    if (contentType === 'image') {
+      // For images, store as plain base64 without encryption
+      encryptedForReceiver = content;
+      encryptedForSender = content;
+    } else {
+      // For text messages, use encryption
+      // Get receiver's public key
+      const { data: receiver, error: receiverError } = await supabase
+        .from('users')
+        .select('public_key')
+        .eq('username', receiverUsername)
+        .single();
+
+      if (receiverError || !receiver) {
+        console.error('Receiver not found:', receiverError);
+        return false;
+      }
+
+      // Get sender's public key for self-encryption
+      const { data: sender, error: senderError } = await supabase
+        .from('users')
+        .select('public_key')
+        .eq('username', senderUsername)
+        .single();
+
+      if (senderError || !sender) {
+        console.error('Sender not found:', senderError);
+        return false;
+      }
+
+      // Encrypt message for receiver
+      const receiverPublicKey = await importPublicKey(receiver.public_key);
+      encryptedForReceiver = await encryptMessage(content, receiverPublicKey);
+
+      // Encrypt message for sender (so they can see their own messages)
+      const senderPublicKey = await importPublicKey(sender.public_key);
+      encryptedForSender = await encryptMessage(content, senderPublicKey);
     }
-
-    // Get sender's public key for self-encryption
-    const { data: sender, error: senderError } = await supabase
-      .from('users')
-      .select('public_key')
-      .eq('username', senderUsername)
-      .single();
-
-    if (senderError || !sender) {
-      console.error('Sender not found:', senderError);
-      return false;
-    }
-
-    // Encrypt message for receiver
-    const receiverPublicKey = await importPublicKey(receiver.public_key);
-    const encryptedForReceiver = await encryptMessage(content, receiverPublicKey);
-
-    // Encrypt message for sender (so they can see their own messages)
-    const senderPublicKey = await importPublicKey(sender.public_key);
-    const encryptedForSender = await encryptMessage(content, senderPublicKey);
 
     // Store two copies of the message - one for each participant
     const messages = [
@@ -131,7 +141,15 @@ export async function getMessages(
       try {
         // Only decrypt messages where current user is the receiver or it's a self-message
         if (message.receiver_username === currentUsername) {
-          const decryptedContent = await decryptMessage(message.encrypted_content, privateKey);
+          let decryptedContent: string;
+          
+          if (message.content_type === 'image') {
+            // Images are stored as plain base64, no decryption needed
+            decryptedContent = message.encrypted_content;
+          } else {
+            // Text messages need decryption
+            decryptedContent = await decryptMessage(message.encrypted_content, privateKey);
+          }
           
           // For self-messages (sender's copy), use original_receiver if available, otherwise use otherUsername
           const actualReceiver = message.original_receiver || 
