@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import ChatHeader from './ChatHeader';
+import TypingIndicator from './TypingIndicator';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ChatInterfaceProps {
@@ -49,24 +50,8 @@ export default function ChatInterface({
     try {
       const success = await sendMessage(currentUsername, selectedUser, content, type);
       if (success) {
-        // Add optimistic update - show message immediately
-        const optimisticMessage: Message = {
-          id: `temp-${Date.now()}`,
-          sender_username: currentUsername,
-          receiver_username: selectedUser,
-          content: content,
-          content_type: type,
-          timestamp: new Date().toISOString(),
-          decrypted: true,
-        };
-        
-        setMessages(prev => [...prev, optimisticMessage]);
-        setTimeout(scrollToBottom, 50);
-        
-        // Reload messages after a short delay to get the real message
-        setTimeout(() => {
-          loadMessages();
-        }, 500);
+        // Reload messages to get the latest state
+        await loadMessages();
         
         // Update last seen
         await updateLastSeen(currentUsername);
@@ -152,10 +137,18 @@ export default function ChatInterface({
           </div>
         </ScrollArea>
 
+        {/* Typing Indicator */}
+        <TypingIndicator 
+          currentUsername={currentUsername} 
+          otherUsername={selectedUser} 
+        />
+
         <MessageInput
           onSendMessage={handleSendMessage}
           disabled={loading || sendingMessage}
           isLoading={sendingMessage}
+          currentUsername={currentUsername}
+          selectedUser={selectedUser}
         />
       </div>
     </div>

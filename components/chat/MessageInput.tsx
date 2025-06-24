@@ -1,26 +1,86 @@
 "use client";
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Send, Image, Smile, X, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { setTypingStatus } from '@/lib/chat';
 
 interface MessageInputProps {
   onSendMessage: (content: string, type: 'text' | 'image' | 'emoji') => void;
   disabled?: boolean;
   isLoading?: boolean;
+  currentUsername: string;
+  selectedUser: string;
 }
 
-export default function MessageInput({ onSendMessage, disabled, isLoading }: MessageInputProps) {
+export default function MessageInput({ 
+  onSendMessage, 
+  disabled, 
+  isLoading, 
+  currentUsername, 
+  selectedUser 
+}: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [showImageDialog, setShowImageDialog] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle typing status
+  useEffect(() => {
+    const handleTypingStatus = async (typing: boolean) => {
+      if (typing !== isTyping) {
+        setIsTyping(typing);
+        await setTypingStatus(currentUsername, selectedUser, typing);
+      }
+    };
+
+    if (message.trim() && !isTyping) {
+      handleTypingStatus(true);
+    }
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set new timeout to stop typing status
+    if (message.trim()) {
+      typingTimeoutRef.current = setTimeout(() => {
+        handleTypingStatus(false);
+      }, 2000); // Stop typing after 2 seconds of inactivity
+    } else if (isTyping) {
+      handleTypingStatus(false);
+    }
+
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [message, currentUsername, selectedUser, isTyping]);
+
+  // Cleanup typing status when component unmounts or user changes
+  useEffect(() => {
+    return () => {
+      if (isTyping) {
+        setTypingStatus(currentUsername, selectedUser, false);
+      }
+    };
+  }, [currentUsername, selectedUser, isTyping]);
 
   const handleSend = async () => {
     if (!message.trim() || disabled) return;
+
+    // Stop typing status before sending
+    if (isTyping) {
+      await setTypingStatus(currentUsername, selectedUser, false);
+      setIsTyping(false);
+    }
 
     await onSendMessage(message.trim(), 'text');
     setMessage('');
@@ -31,6 +91,10 @@ export default function MessageInput({ onSendMessage, disabled, isLoading }: Mes
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleMessageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessage(e.target.value);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,8 +125,14 @@ export default function MessageInput({ onSendMessage, disabled, isLoading }: Mes
     reader.readAsDataURL(file);
   };
 
-  const handleSendImage = () => {
+  const handleSendImage = async () => {
     if (imagePreview) {
+      // Stop typing status before sending
+      if (isTyping) {
+        await setTypingStatus(currentUsername, selectedUser, false);
+        setIsTyping(false);
+      }
+
       onSendMessage(imagePreview, 'image');
       setImagePreview(null);
       setShowImageDialog(false);
@@ -77,7 +147,13 @@ export default function MessageInput({ onSendMessage, disabled, isLoading }: Mes
     }
   };
 
-  const addEmoji = (emoji: string) => {
+  const addEmoji = async (emoji: string) => {
+    // Stop typing status before sending
+    if (isTyping) {
+      await setTypingStatus(currentUsername, selectedUser, false);
+      setIsTyping(false);
+    }
+
     onSendMessage(emoji, 'emoji');
   };
 
@@ -109,7 +185,7 @@ export default function MessageInput({ onSendMessage, disabled, isLoading }: Mes
               <div className="relative">
                 <Input
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={handleMessageChange}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
                   disabled={disabled}

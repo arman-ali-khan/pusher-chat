@@ -18,6 +18,12 @@ export interface User {
   created_at: string;
 }
 
+export interface TypingStatus {
+  username: string;
+  isTyping: boolean;
+  timestamp: string;
+}
+
 /**
  * Send encrypted message to another user
  */
@@ -73,6 +79,7 @@ export async function sendMessage(
         receiver_username: senderUsername, // Self-message for sender to decrypt
         encrypted_content: encryptedForSender,
         content_type: contentType,
+        original_receiver: receiverUsername, // Track the original receiver
       }
     ];
 
@@ -118,27 +125,34 @@ export async function getMessages(
     // Decrypt messages
     const privateKey = await importPrivateKey(privateKeyString);
     const decryptedMessages: Message[] = [];
-    const seenMessageIds = new Set<string>();
+    const processedMessages = new Map<string, boolean>();
 
     for (const message of messages) {
       try {
-        // Skip duplicate messages (we store messages twice for encryption purposes)
-        const messageKey = `${message.sender_username}-${message.timestamp}-${message.content_type}`;
-        if (seenMessageIds.has(messageKey)) continue;
-        seenMessageIds.add(messageKey);
-
         // Only decrypt messages where current user is the receiver or it's a self-message
         if (message.receiver_username === currentUsername) {
           const decryptedContent = await decryptMessage(message.encrypted_content, privateKey);
-          decryptedMessages.push({
-            id: message.id,
-            sender_username: message.sender_username,
-            receiver_username: otherUsername, // Always show as conversation with other user
-            content: decryptedContent,
-            content_type: message.content_type,
-            timestamp: message.timestamp,
-            decrypted: true,
-          });
+          
+          // For self-messages (sender's copy), use original_receiver if available, otherwise use otherUsername
+          const actualReceiver = message.original_receiver || 
+            (message.sender_username === currentUsername && message.receiver_username === currentUsername ? otherUsername : message.receiver_username);
+          
+          // Create a unique key for deduplication based on content, sender, and timestamp
+          const messageKey = `${message.sender_username}-${decryptedContent}-${message.timestamp}-${message.content_type}`;
+          
+          if (!processedMessages.has(messageKey)) {
+            processedMessages.set(messageKey, true);
+            
+            decryptedMessages.push({
+              id: message.id,
+              sender_username: message.sender_username,
+              receiver_username: actualReceiver,
+              content: decryptedContent,
+              content_type: message.content_type,
+              timestamp: message.timestamp,
+              decrypted: true,
+            });
+          }
         }
       } catch (decryptError) {
         console.error('Decryption failed for message:', message.id, decryptError);
@@ -146,11 +160,8 @@ export async function getMessages(
       }
     }
 
-    // Sort by timestamp and remove duplicates
-    const uniqueMessages = decryptedMessages
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    return uniqueMessages;
+    // Sort by timestamp
+    return decryptedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   } catch (error) {
     console.error('Error in getMessages:', error);
     return [];
@@ -216,4 +227,96 @@ export async function updateLastSeen(username: string): Promise<void> {
   } catch (error) {
     console.error('Error updating last seen:', error);
   }
+}
+
+/**
+ * Set typing status for a user in a conversation
+ */
+export async function setTypingStatus(
+  username: string,
+  conversationWith: string,
+  isTyping: boolean
+): Promise<void> {
+  try {
+    if (isTyping) {
+      // Insert or update typing status
+      await supabase
+        .from('typing_status')
+        .upsert({
+          username,
+          conversation_with: conversationWith,
+          is_typing: true,
+          timestamp: new Date().toISOString(),
+        });
+    } else {
+      // Remove typing status
+      await supabase
+        .from('typing_status')
+        .delete()
+        .eq('username', username)
+        .eq('conversation_with', conversationWith);
+    }
+  } catch (error) {
+    console.error('Error setting typing status:', error);
+  }
+}
+
+/**
+ * Get typing status for a conversation
+ */
+export async function getTypingStatus(
+  currentUsername: string,
+  otherUsername: string
+): Promise<TypingStatus[]> {
+  try {
+    const { data: typingData, error } = await supabase
+      .from('typing_status')
+      .select('*')
+      .eq('conversation_with', currentUsername)
+      .eq('username', otherUsername)
+      .gte('timestamp', new Date(Date.now() - 10000).toISOString()); // Only get recent typing (within 10 seconds)
+
+    if (error) {
+      console.error('Error fetching typing status:', error);
+      return [];
+    }
+
+    return (typingData || []).map(item => ({
+      username: item.username,
+      isTyping: item.is_typing,
+      timestamp: item.timestamp,
+    }));
+  } catch (error) {
+    console.error('Error in getTypingStatus:', error);
+    return [];
+  }
+}
+
+/**
+ * Subscribe to typing status changes
+ */
+export function subscribeToTypingStatus(
+  currentUsername: string,
+  callback: (typingUsers: TypingStatus[]) => void
+) {
+  const channel = supabase
+    .channel('typing_status')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'typing_status',
+        filter: `conversation_with=eq.${currentUsername}`,
+      },
+      () => {
+        // Refetch typing status when changes occur
+        // This will be handled by the component
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
