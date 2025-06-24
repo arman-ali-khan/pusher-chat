@@ -8,6 +8,7 @@ import UserList from '@/components/chat/UserList';
 import ChatInterface from '@/components/chat/ChatInterface';
 import { Card, CardContent } from '@/components/ui/card';
 import { MessageCircle, Shield } from 'lucide-react';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export default function ChatPage() {
   const [currentUsername, setCurrentUsername] = useState('');
@@ -16,6 +17,7 @@ export default function ChatPage() {
   const [privateKey, setPrivateKey] = useState('');
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const isOnline = useOnlineStatus();
 
   useEffect(() => {
     const initializeChat = async () => {
@@ -35,8 +37,10 @@ export default function ChatPage() {
         // Load users
         await loadUsers();
         
-        // Update last seen
-        await updateLastSeen(savedUsername);
+        // Update last seen if online
+        if (isOnline) {
+          await updateLastSeen(savedUsername);
+        }
       } catch (error) {
         console.error('Error initializing chat:', error);
         router.push('/');
@@ -46,7 +50,7 @@ export default function ChatPage() {
     };
 
     initializeChat();
-  }, [router]);
+  }, [router, isOnline]);
 
   const loadUsers = async () => {
     try {
@@ -57,9 +61,20 @@ export default function ChatPage() {
     }
   };
 
-  // Auto-refresh users every 10 seconds
+  const handleRetryConnection = async () => {
+    if (currentUsername) {
+      try {
+        await loadUsers();
+        await updateLastSeen(currentUsername);
+      } catch (error) {
+        console.error('Error retrying connection:', error);
+      }
+    }
+  };
+
+  // Auto-refresh users every 10 seconds when online
   useEffect(() => {
-    if (!currentUsername) return;
+    if (!currentUsername || !isOnline) return;
 
     const interval = setInterval(() => {
       loadUsers();
@@ -67,11 +82,11 @@ export default function ChatPage() {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [currentUsername]);
+  }, [currentUsername, isOnline]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center pt-12">
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
           <p className="text-muted-foreground">Loading secure chat...</p>
@@ -81,7 +96,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen bg-background flex">
+    <div className="h-screen bg-background flex pt-12">
       {/* Desktop Layout */}
       <div className="hidden lg:flex w-full">
         <UserList
@@ -114,6 +129,11 @@ export default function ChatPage() {
                     <Shield className="h-4 w-4" />
                     <span>All messages are end-to-end encrypted</span>
                   </div>
+                  {!isOnline && (
+                    <div className="text-sm text-yellow-600 dark:text-yellow-400">
+                      You're currently offline. Messages will be queued and sent when you reconnect.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

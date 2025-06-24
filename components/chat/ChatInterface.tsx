@@ -8,6 +8,9 @@ import MessageInput from './MessageInput';
 import ChatHeader from './ChatHeader';
 import TypingIndicator from './TypingIndicator';
 import { formatDistanceToNow } from 'date-fns';
+import { useMessageQueue } from '@/hooks/useMessageQueue';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { MessageStatusType } from '@/lib/messageStatus';
 
 interface ChatInterfaceProps {
   currentUsername: string;
@@ -17,6 +20,12 @@ interface ChatInterfaceProps {
   onBack?: () => void;
 }
 
+interface MessageWithStatus extends Message {
+  status?: MessageStatusType;
+  isEdited?: boolean;
+  editedAt?: string;
+}
+
 export default function ChatInterface({ 
   currentUsername, 
   selectedUser, 
@@ -24,10 +33,11 @@ export default function ChatInterface({
   users,
   onBack 
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<MessageWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isOnline = useOnlineStatus();
 
   const selectedUserData = users.find(u => u.username === selectedUser);
 
@@ -38,29 +48,66 @@ export default function ChatInterface({
   const loadMessages = async () => {
     try {
       const chatMessages = await getMessages(currentUsername, selectedUser, privateKey);
-      setMessages(chatMessages);
+      // Add status to messages (simulate different statuses for demo)
+      const messagesWithStatus = chatMessages.map((msg, index) => ({
+        ...msg,
+        status: msg.sender_username === currentUsername 
+          ? (index % 4 === 0 ? 'read' : index % 3 === 0 ? 'delivered' : 'sent') as MessageStatusType
+          : undefined
+      }));
+      setMessages(messagesWithStatus);
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error('Error loading messages:', error);
     }
   };
 
-  const handleSendMessage = async (content: string, type: 'text' | 'image') => {
-    setSendingMessage(true);
+  const handleSendMessageDirect = async (content: string, type: 'text' | 'image'): Promise<boolean> => {
     try {
       const success = await sendMessage(currentUsername, selectedUser, content, type);
       if (success) {
-        // Reload messages to get the latest state
         await loadMessages();
-        
-        // Update last seen
         await updateLastSeen(currentUsername);
+      }
+      return success;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      return false;
+    }
+  };
+
+  const { messageQueue, addToQueue } = useMessageQueue(
+    currentUsername,
+    (content, type, receiver) => handleSendMessageDirect(content, type)
+  );
+
+  const handleSendMessage = async (content: string, type: 'text' | 'image') => {
+    setSendingMessage(true);
+    
+    try {
+      if (isOnline) {
+        // Send immediately if online
+        const success = await handleSendMessageDirect(content, type);
+        if (!success) {
+          // Add to queue if sending fails
+          addToQueue(content, type, selectedUser);
+        }
+      } else {
+        // Add to queue if offline
+        addToQueue(content, type, selectedUser);
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      // Add to queue on error
+      addToQueue(content, type, selectedUser);
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  const handleMessageEdited = () => {
+    // Reload messages when a message is edited
+    loadMessages();
   };
 
   useEffect(() => {
@@ -75,15 +122,15 @@ export default function ChatInterface({
   // Auto-refresh messages every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!sendingMessage) {
+      if (!sendingMessage && isOnline) {
         loadMessages();
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [selectedUser, currentUsername, privateKey, sendingMessage]);
+  }, [selectedUser, currentUsername, privateKey, sendingMessage, isOnline]);
 
-  const isOnline = (lastSeen: string) => {
+  const isOnlineUser = (lastSeen: string) => {
     const lastSeenDate = new Date(lastSeen);
     const now = new Date();
     const diffInMinutes = (now.getTime() - lastSeenDate.getTime()) / (1000 * 60);
@@ -91,7 +138,7 @@ export default function ChatInterface({
   };
 
   const formatLastSeen = (lastSeen: string) => {
-    if (isOnline(lastSeen)) {
+    if (isOnlineUser(lastSeen)) {
       return '';
     }
     try {
@@ -105,7 +152,7 @@ export default function ChatInterface({
     <div className="flex flex-col h-full">
       <ChatHeader
         username={selectedUser}
-        isOnline={selectedUserData ? isOnline(selectedUserData.last_seen) : false}
+        isOnline={selectedUserData ? isOnlineUser(selectedUserData.last_seen) : false}
         lastSeen={selectedUserData ? formatLastSeen(selectedUserData.last_seen) : undefined}
         onBack={onBack}
       />
@@ -129,10 +176,24 @@ export default function ChatInterface({
                     key={`${message.id}-${index}`}
                     message={message}
                     isOwn={message.sender_username === currentUsername}
+                    currentUsername={currentUsername}
+                    privateKey={privateKey}
+                    onMessageEdited={handleMessageEdited}
                   />
                 ))}
               </>
             )}
+
+            {/* Show queued messages */}
+            {messageQueue.length > 0 && (
+              <div className="text-center py-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 rounded-full text-sm">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600"></div>
+                  {messageQueue.length} message{messageQueue.length > 1 ? 's' : ''} queued
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
