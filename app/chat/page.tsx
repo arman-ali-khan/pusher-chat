@@ -3,18 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, getUsers, updateLastSeen } from '@/lib/chat';
-import { getOrCreateKeyPair } from '@/lib/encryption';
 import UserList from '@/components/chat/UserList';
 import ChatInterface from '@/components/chat/ChatInterface';
 import { Card, CardContent } from '@/components/ui/card';
-import { MessageCircle, Shield } from 'lucide-react';
+import { MessageCircle, Zap } from 'lucide-react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export default function ChatPage() {
   const [currentUsername, setCurrentUsername] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>('');
-  const [privateKey, setPrivateKey] = useState('');
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const isOnline = useOnlineStatus();
@@ -29,10 +27,6 @@ export default function ChatPage() {
 
       try {
         setCurrentUsername(savedUsername);
-        
-        // Get or create key pair
-        const { serialized } = await getOrCreateKeyPair(savedUsername);
-        setPrivateKey(serialized.privateKey);
         
         // Load users
         await loadUsers();
@@ -89,7 +83,7 @@ export default function ChatPage() {
       <div className="min-h-screen bg-background flex items-center justify-center pt-12">
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Loading secure chat...</p>
+          <p className="text-muted-foreground">Loading optimized chat...</p>
         </div>
       </div>
     );
@@ -111,7 +105,6 @@ export default function ChatPage() {
             <ChatInterface
               currentUsername={currentUsername}
               selectedUser={selectedUser}
-              privateKey={privateKey}
               users={users}
             />
           ) : (
@@ -123,11 +116,11 @@ export default function ChatPage() {
                   </div>
                   <h2 className="text-2xl font-semibold">Welcome to SecureChat</h2>
                   <p className="text-muted-foreground">
-                    Select a user from the sidebar to start an encrypted conversation.
+                    Select a user from the sidebar to start a fast, reliable conversation.
                   </p>
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Shield className="h-4 w-4" />
-                    <span>All messages are end-to-end encrypted</span>
+                    <Zap className="h-4 w-4" />
+                    <span>Optimized for speed and reliability</span>
                   </div>
                   {!isOnline && (
                     <div className="text-sm text-yellow-600 dark:text-yellow-400">
@@ -147,7 +140,6 @@ export default function ChatPage() {
           <ChatInterface
             currentUsername={currentUsername}
             selectedUser={selectedUser}
-            privateKey={privateKey}
             users={users}
             onBack={() => setSelectedUser('')}
           />

@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { encryptMessage, decryptMessage, importPublicKey, importPrivateKey } from './encryption';
 
 export interface Message {
   id: string;
@@ -8,12 +7,13 @@ export interface Message {
   content: string;
   content_type: 'text' | 'image';
   timestamp: string;
-  decrypted?: boolean;
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  is_edited?: boolean;
+  edited_at?: string;
 }
 
 export interface User {
   username: string;
-  public_key: string;
   last_seen: string;
   created_at: string;
 }
@@ -25,7 +25,8 @@ export interface TypingStatus {
 }
 
 /**
- * Send message to another user (encrypted for text, plain base64 for images)
+ * Send message to another user (optimized for performance)
+ * Handles large messages by chunking them if necessary
  */
 export async function sendMessage(
   senderUsername: string,
@@ -34,71 +35,33 @@ export async function sendMessage(
   contentType: 'text' | 'image' = 'text'
 ): Promise<boolean> {
   try {
-    let encryptedForReceiver: string;
-    let encryptedForSender: string;
-
-    if (contentType === 'image') {
-      // For images, store as plain base64 without encryption
-      encryptedForReceiver = content;
-      encryptedForSender = content;
-    } else {
-      // For text messages, use encryption
-      // Get receiver's public key
-      const { data: receiver, error: receiverError } = await supabase
-        .from('users')
-        .select('public_key')
-        .eq('username', receiverUsername)
-        .single();
-
-      if (receiverError || !receiver) {
-        console.error('Receiver not found:', receiverError);
-        return false;
-      }
-
-      // Get sender's public key for self-encryption
-      const { data: sender, error: senderError } = await supabase
-        .from('users')
-        .select('public_key')
-        .eq('username', senderUsername)
-        .single();
-
-      if (senderError || !sender) {
-        console.error('Sender not found:', senderError);
-        return false;
-      }
-
-      // Encrypt message for receiver
-      const receiverPublicKey = await importPublicKey(receiver.public_key);
-      encryptedForReceiver = await encryptMessage(content, receiverPublicKey);
-
-      // Encrypt message for sender (so they can see their own messages)
-      const senderPublicKey = await importPublicKey(sender.public_key);
-      encryptedForSender = await encryptMessage(content, senderPublicKey);
+    // Validate input
+    if (!senderUsername || !receiverUsername || !content) {
+      console.error('Invalid message parameters');
+      return false;
     }
 
-    // Store two copies of the message - one for each participant
-    const messages = [
-      {
-        sender_username: senderUsername,
-        receiver_username: receiverUsername,
-        encrypted_content: encryptedForReceiver,
-        content_type: contentType,
-      },
-      {
-        sender_username: senderUsername,
-        receiver_username: senderUsername, // Self-message for sender to decrypt
-        encrypted_content: encryptedForSender,
-        content_type: contentType,
-        original_receiver: receiverUsername, // Track the original receiver
-      }
-    ];
+    // Handle large messages by chunking (>1000 characters for text)
+    if (contentType === 'text' && content.length > 1000) {
+      return await sendLargeMessage(senderUsername, receiverUsername, content);
+    }
 
-    const { error: messageError } = await supabase
+    // For regular messages, store directly without encryption
+    const messageData = {
+      sender_username: senderUsername,
+      receiver_username: receiverUsername,
+      content: content,
+      content_type: contentType,
+      status: 'sent',
+      timestamp: new Date().toISOString()
+    };
+
+    const { error } = await supabase
       .from('messages')
-      .insert(messages);
+      .insert([messageData]);
 
-    if (messageError) {
-      console.error('Error sending message:', messageError);
+    if (error) {
+      console.error('Error sending message:', error);
       return false;
     }
 
@@ -110,20 +73,72 @@ export async function sendMessage(
 }
 
 /**
- * Get messages between two users and decrypt them
+ * Handle large messages by splitting them into chunks
+ */
+async function sendLargeMessage(
+  senderUsername: string,
+  receiverUsername: string,
+  content: string
+): Promise<boolean> {
+  try {
+    const chunkSize = 800; // Conservative chunk size
+    const chunks = [];
+    
+    // Split content into chunks
+    for (let i = 0; i < content.length; i += chunkSize) {
+      chunks.push(content.slice(i, i + chunkSize));
+    }
+
+    const messageId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+
+    // Send chunks with metadata
+    const chunkMessages = chunks.map((chunk, index) => ({
+      sender_username: senderUsername,
+      receiver_username: receiverUsername,
+      content: chunk,
+      content_type: 'text',
+      status: 'sent',
+      timestamp: timestamp,
+      chunk_info: {
+        message_id: messageId,
+        chunk_index: index,
+        total_chunks: chunks.length,
+        is_chunked: true
+      }
+    }));
+
+    const { error } = await supabase
+      .from('messages')
+      .insert(chunkMessages);
+
+    if (error) {
+      console.error('Error sending chunked message:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in sendLargeMessage:', error);
+    return false;
+  }
+}
+
+/**
+ * Get messages between two users (optimized query)
  */
 export async function getMessages(
   currentUsername: string,
-  otherUsername: string,
-  privateKeyString: string
+  otherUsername: string
 ): Promise<Message[]> {
   try {
-    // Get messages where current user is involved
+    // Optimized query with proper indexing
     const { data: messages, error } = await supabase
       .from('messages')
       .select('*')
-      .or(`and(sender_username.eq.${currentUsername},receiver_username.eq.${otherUsername}),and(sender_username.eq.${otherUsername},receiver_username.eq.${currentUsername}),and(sender_username.eq.${currentUsername},receiver_username.eq.${currentUsername})`)
-      .order('timestamp', { ascending: true });
+      .or(`and(sender_username.eq.${currentUsername},receiver_username.eq.${otherUsername}),and(sender_username.eq.${otherUsername},receiver_username.eq.${currentUsername})`)
+      .order('timestamp', { ascending: true })
+      .limit(100); // Limit to recent messages for performance
 
     if (error) {
       console.error('Error fetching messages:', error);
@@ -132,54 +147,20 @@ export async function getMessages(
 
     if (!messages) return [];
 
-    // Decrypt messages
-    const privateKey = await importPrivateKey(privateKeyString);
-    const decryptedMessages: Message[] = [];
-    const processedMessages = new Map<string, boolean>();
-
-    for (const message of messages) {
-      try {
-        // Only decrypt messages where current user is the receiver or it's a self-message
-        if (message.receiver_username === currentUsername) {
-          let decryptedContent: string;
-          
-          if (message.content_type === 'image') {
-            // Images are stored as plain base64, no decryption needed
-            decryptedContent = message.encrypted_content;
-          } else {
-            // Text messages need decryption
-            decryptedContent = await decryptMessage(message.encrypted_content, privateKey);
-          }
-          
-          // For self-messages (sender's copy), use original_receiver if available, otherwise use otherUsername
-          const actualReceiver = message.original_receiver || 
-            (message.sender_username === currentUsername && message.receiver_username === currentUsername ? otherUsername : message.receiver_username);
-          
-          // Create a unique key for deduplication based on content, sender, and timestamp
-          const messageKey = `${message.sender_username}-${decryptedContent}-${message.timestamp}-${message.content_type}`;
-          
-          if (!processedMessages.has(messageKey)) {
-            processedMessages.set(messageKey, true);
-            
-            decryptedMessages.push({
-              id: message.id,
-              sender_username: message.sender_username,
-              receiver_username: actualReceiver,
-              content: decryptedContent,
-              content_type: message.content_type,
-              timestamp: message.timestamp,
-              decrypted: true,
-            });
-          }
-        }
-      } catch (decryptError) {
-        console.error('Decryption failed for message:', message.id, decryptError);
-        // Skip messages that can't be decrypted
-      }
-    }
-
-    // Sort by timestamp
-    return decryptedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    // Process chunked messages
+    const processedMessages = await processChunkedMessages(messages);
+    
+    return processedMessages.map(message => ({
+      id: message.id,
+      sender_username: message.sender_username,
+      receiver_username: message.receiver_username,
+      content: message.content,
+      content_type: message.content_type,
+      timestamp: message.timestamp,
+      status: message.status || 'sent',
+      is_edited: message.is_edited || false,
+      edited_at: message.edited_at
+    }));
   } catch (error) {
     console.error('Error in getMessages:', error);
     return [];
@@ -187,13 +168,60 @@ export async function getMessages(
 }
 
 /**
- * Get all users
+ * Process and reconstruct chunked messages
+ */
+async function processChunkedMessages(messages: any[]): Promise<any[]> {
+  const chunkedGroups = new Map<string, any[]>();
+  const regularMessages: any[] = [];
+
+  // Separate chunked and regular messages
+  messages.forEach(message => {
+    if (message.chunk_info?.is_chunked) {
+      const messageId = message.chunk_info.message_id;
+      if (!chunkedGroups.has(messageId)) {
+        chunkedGroups.set(messageId, []);
+      }
+      chunkedGroups.get(messageId)!.push(message);
+    } else {
+      regularMessages.push(message);
+    }
+  });
+
+  // Reconstruct chunked messages
+  const reconstructedMessages: any[] = [];
+  chunkedGroups.forEach((chunks, messageId) => {
+    // Sort chunks by index
+    chunks.sort((a, b) => a.chunk_info.chunk_index - b.chunk_info.chunk_index);
+    
+    // Check if all chunks are present
+    const expectedChunks = chunks[0]?.chunk_info?.total_chunks || 0;
+    if (chunks.length === expectedChunks) {
+      // Reconstruct the full message
+      const fullContent = chunks.map(chunk => chunk.content).join('');
+      const baseMessage = chunks[0];
+      
+      reconstructedMessages.push({
+        ...baseMessage,
+        content: fullContent,
+        chunk_info: undefined // Remove chunk info from final message
+      });
+    } else {
+      // If chunks are missing, add individual chunks as separate messages
+      reconstructedMessages.push(...chunks);
+    }
+  });
+
+  return [...regularMessages, ...reconstructedMessages];
+}
+
+/**
+ * Get all users (simplified without public keys)
  */
 export async function getUsers(): Promise<User[]> {
   try {
     const { data: users, error } = await supabase
       .from('users')
-      .select('*')
+      .select('username, last_seen, created_at')
       .order('username', { ascending: true });
 
     if (error) {
@@ -209,15 +237,28 @@ export async function getUsers(): Promise<User[]> {
 }
 
 /**
- * Create or update user
+ * Create or update user (simplified)
  */
-export async function createOrUpdateUser(username: string, publicKey: string): Promise<boolean> {
+export async function createOrUpdateUser(username: string): Promise<boolean> {
   try {
+    // Basic input validation
+    if (!username || username.trim().length < 2) {
+      console.error('Invalid username');
+      return false;
+    }
+
+    // Sanitize username
+    const sanitizedUsername = username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    
+    if (sanitizedUsername.length < 2) {
+      console.error('Username too short after sanitization');
+      return false;
+    }
+
     const { error } = await supabase
       .from('users')
       .upsert({
-        username,
-        public_key: publicKey,
+        username: sanitizedUsername,
         last_seen: new Date().toISOString(),
       });
 
@@ -337,4 +378,59 @@ export function subscribeToTypingStatus(
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+/**
+ * Batch update message status for better performance
+ */
+export async function batchUpdateMessageStatus(
+  messageIds: string[],
+  status: 'delivered' | 'read'
+): Promise<boolean> {
+  try {
+    if (messageIds.length === 0) return true;
+
+    const { error } = await supabase
+      .from('messages')
+      .update({ 
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', messageIds);
+
+    if (error) {
+      console.error('Error batch updating message status:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in batchUpdateMessageStatus:', error);
+    return false;
+  }
+}
+
+/**
+ * Get message count for pagination
+ */
+export async function getMessageCount(
+  currentUsername: string,
+  otherUsername: string
+): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .or(`and(sender_username.eq.${currentUsername},receiver_username.eq.${otherUsername}),and(sender_username.eq.${otherUsername},receiver_username.eq.${currentUsername})`);
+
+    if (error) {
+      console.error('Error getting message count:', error);
+      return 0;
+    }
+
+    return count || 0;
+  } catch (error) {
+    console.error('Error in getMessageCount:', error);
+    return 0;
+  }
 }

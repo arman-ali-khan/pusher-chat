@@ -19,7 +19,6 @@ interface MessageBubbleProps {
   };
   isOwn: boolean;
   currentUsername: string;
-  privateKey: string;
   onMessageEdited?: () => void;
 }
 
@@ -27,7 +26,6 @@ export default function MessageBubble({
   message, 
   isOwn, 
   currentUsername, 
-  privateKey,
   onMessageEdited 
 }: MessageBubbleProps) {
   const [imageError, setImageError] = useState(false);
@@ -45,7 +43,7 @@ export default function MessageBubble({
   const handleEditMessage = async (newContent: string): Promise<boolean> => {
     setIsEditing(true);
     try {
-      const success = await editMessage(message.id, newContent, currentUsername, privateKey);
+      const success = await editMessage(message.id, newContent, currentUsername);
       if (success && onMessageEdited) {
         onMessageEdited();
       }
@@ -61,15 +59,6 @@ export default function MessageBubble({
   const canEdit = canEditMessage(message.timestamp, message.sender_username, currentUsername);
 
   const renderContent = () => {
-    if (!message.decrypted) {
-      return (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <AlertCircle className="h-4 w-4" />
-          <span>Message could not be decrypted</span>
-        </div>
-      );
-    }
-
     switch (message.content_type) {
       case 'image':
         return (

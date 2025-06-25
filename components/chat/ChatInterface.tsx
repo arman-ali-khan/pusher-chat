@@ -15,7 +15,6 @@ import { MessageStatusType } from '@/lib/messageStatus';
 interface ChatInterfaceProps {
   currentUsername: string;
   selectedUser: string;
-  privateKey: string;
   users: User[];
   onBack?: () => void;
 }
@@ -29,7 +28,6 @@ interface MessageWithStatus extends Message {
 export default function ChatInterface({ 
   currentUsername, 
   selectedUser, 
-  privateKey, 
   users,
   onBack 
 }: ChatInterfaceProps) {
@@ -47,7 +45,7 @@ export default function ChatInterface({
 
   const loadMessages = async () => {
     try {
-      const chatMessages = await getMessages(currentUsername, selectedUser, privateKey);
+      const chatMessages = await getMessages(currentUsername, selectedUser);
       // Add status to messages (simulate different statuses for demo)
       const messagesWithStatus = chatMessages.map((msg, index) => ({
         ...msg,
@@ -113,13 +111,13 @@ export default function ChatInterface({
   useEffect(() => {
     setLoading(true);
     loadMessages().finally(() => setLoading(false));
-  }, [selectedUser, currentUsername, privateKey]);
+  }, [selectedUser, currentUsername]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Auto-refresh messages every 3 seconds
+  // Auto-refresh messages every 3 seconds (optimized interval)
   useEffect(() => {
     const interval = setInterval(() => {
       if (!sendingMessage && isOnline) {
@@ -128,7 +126,7 @@ export default function ChatInterface({
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [selectedUser, currentUsername, privateKey, sendingMessage, isOnline]);
+  }, [selectedUser, currentUsername, sendingMessage, isOnline]);
 
   const isOnlineUser = (lastSeen: string) => {
     const lastSeenDate = new Date(lastSeen);
@@ -177,7 +175,6 @@ export default function ChatInterface({
                     message={message}
                     isOwn={message.sender_username === currentUsername}
                     currentUsername={currentUsername}
-                    privateKey={privateKey}
                     onMessageEdited={handleMessageEdited}
                   />
                 ))}

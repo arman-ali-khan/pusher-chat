@@ -11,19 +11,16 @@ export type Database = {
       users: {
         Row: {
           username: string;
-          public_key: string;
           last_seen: string;
           created_at: string;
         };
         Insert: {
           username: string;
-          public_key: string;
           last_seen?: string;
           created_at?: string;
         };
         Update: {
           username?: string;
-          public_key?: string;
           last_seen?: string;
           created_at?: string;
         };
@@ -33,27 +30,91 @@ export type Database = {
           id: string;
           sender_username: string;
           receiver_username: string;
-          encrypted_content: string;
+          content: string;
           content_type: string;
           timestamp: string;
+          status?: string;
+          is_edited?: boolean;
+          edited_at?: string;
+          edit_history?: any;
+          chunk_info?: any;
+          original_receiver?: string;
           created_at: string;
         };
         Insert: {
           id?: string;
           sender_username: string;
           receiver_username: string;
-          encrypted_content: string;
+          content: string;
           content_type?: string;
           timestamp?: string;
+          status?: string;
+          is_edited?: boolean;
+          edited_at?: string;
+          edit_history?: any;
+          chunk_info?: any;
+          original_receiver?: string;
           created_at?: string;
         };
         Update: {
           id?: string;
           sender_username?: string;
           receiver_username?: string;
-          encrypted_content?: string;
+          content?: string;
           content_type?: string;
           timestamp?: string;
+          status?: string;
+          is_edited?: boolean;
+          edited_at?: string;
+          edit_history?: any;
+          chunk_info?: any;
+          original_receiver?: string;
+          created_at?: string;
+        };
+      };
+      typing_status: {
+        Row: {
+          id: string;
+          username: string;
+          conversation_with: string;
+          is_typing: boolean;
+          timestamp: string;
+        };
+        Insert: {
+          id?: string;
+          username: string;
+          conversation_with: string;
+          is_typing?: boolean;
+          timestamp?: string;
+        };
+        Update: {
+          id?: string;
+          username?: string;
+          conversation_with?: string;
+          is_typing?: boolean;
+          timestamp?: string;
+        };
+      };
+      message_reads: {
+        Row: {
+          id: string;
+          message_id: string;
+          reader_username: string;
+          read_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          message_id: string;
+          reader_username: string;
+          read_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          message_id?: string;
+          reader_username?: string;
+          read_at?: string;
           created_at?: string;
         };
       };

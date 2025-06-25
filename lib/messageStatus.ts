@@ -72,13 +72,12 @@ export async function markMessageAsRead(
 }
 
 /**
- * Edit a message (within 5 minutes of sending)
+ * Edit a message (within 5 minutes of sending) - Simplified without encryption
  */
 export async function editMessage(
   messageId: string,
   newContent: string,
-  senderUsername: string,
-  privateKey: string
+  senderUsername: string
 ): Promise<boolean> {
   try {
     // First, get the original message to check if editing is allowed
@@ -105,27 +104,19 @@ export async function editMessage(
       return false;
     }
 
-    // Get sender's public key for encryption
-    const { data: sender, error: senderError } = await supabase
-      .from('users')
-      .select('public_key')
-      .eq('username', senderUsername)
-      .single();
-
-    if (senderError || !sender) {
-      console.error('Sender not found:', senderError);
+    // Validate new content
+    if (!newContent || newContent.trim().length === 0) {
+      console.error('New content cannot be empty');
       return false;
     }
 
-    // Encrypt the new content
-    const { encryptMessage, importPublicKey } = await import('./encryption');
-    const senderPublicKey = await importPublicKey(sender.public_key);
-    const encryptedContent = await encryptMessage(newContent, senderPublicKey);
+    // Sanitize content (basic XSS prevention)
+    const sanitizedContent = newContent.trim().replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 
     // Store edit history
     const editHistory = originalMessage.edit_history || [];
     editHistory.push({
-      content: originalMessage.encrypted_content,
+      content: originalMessage.content,
       editedAt: originalMessage.edited_at || originalMessage.timestamp
     });
 
@@ -133,7 +124,7 @@ export async function editMessage(
     const { error: updateError } = await supabase
       .from('messages')
       .update({
-        encrypted_content: encryptedContent,
+        content: sanitizedContent,
         is_edited: true,
         edited_at: new Date().toISOString(),
         edit_history: editHistory
@@ -172,4 +163,66 @@ export function canEditMessage(
   const fiveMinutes = 5 * 60 * 1000;
 
   return timeDiff <= fiveMinutes;
+}
+
+/**
+ * Batch mark multiple messages as delivered
+ */
+export async function batchMarkAsDelivered(
+  messageIds: string[]
+): Promise<boolean> {
+  try {
+    if (messageIds.length === 0) return true;
+
+    const { error } = await supabase
+      .from('messages')
+      .update({ 
+        status: 'delivered',
+        updated_at: new Date().toISOString()
+      })
+      .in('id', messageIds)
+      .eq('status', 'sent'); // Only update messages that are currently 'sent'
+
+    if (error) {
+      console.error('Error batch marking messages as delivered:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in batchMarkAsDelivered:', error);
+    return false;
+  }
+}
+
+/**
+ * Get unread message count for a user
+ */
+export async function getUnreadMessageCount(
+  username: string,
+  fromUsername?: string
+): Promise<number> {
+  try {
+    let query = supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('receiver_username', username)
+      .neq('status', 'read');
+
+    if (fromUsername) {
+      query = query.eq('sender_username', fromUsername);
+    }
+
+    const { count, error } = await query;
+
+    if (error) {
+      console.error('Error getting unread message count:', error);
+      return 0;
+    }
+
+    return count || 0;
+  } catch (error) {
+    console.error('Error in getUnreadMessageCount:', error);
+    return 0;
+  }
 }

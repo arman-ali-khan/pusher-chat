@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageCircle, Shield, Users, Zap } from 'lucide-react';
-import { getOrCreateKeyPair } from '@/lib/encryption';
 import { createOrUpdateUser } from '@/lib/chat';
 import { useRouter } from 'next/navigation';
 
@@ -27,15 +26,12 @@ export default function Home() {
 
     setIsLoading(true);
     try {
-      // Generate or retrieve key pair for the user
-      const { serialized } = await getOrCreateKeyPair(username.trim());
-      
-      // Create or update user in database
-      const success = await createOrUpdateUser(username.trim(), serialized.publicKey);
+      // Create or update user in database (simplified without encryption)
+      const success = await createOrUpdateUser(username.trim());
       
       if (success) {
         // Store username in localStorage
-        localStorage.setItem('currentUsername', username.trim());
+        localStorage.setItem('currentUsername', username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, ''));
         router.push('/chat');
       } else {
         alert('Failed to join chat. Please try again.');
@@ -68,7 +64,7 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            End-to-end encrypted messaging with real-time delivery. Your conversations stay private.
+            Fast and reliable messaging with optimized performance. Your conversations delivered instantly.
           </p>
         </div>
 
@@ -79,11 +75,11 @@ export default function Home() {
               <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-xl w-fit mx-auto mb-3">
                 <Shield className="h-6 w-6 text-green-600" />
               </div>
-              <CardTitle className="text-lg">End-to-End Encryption</CardTitle>
+              <CardTitle className="text-lg">Secure & Private</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription className="text-center">
-                Messages are encrypted with RSA-2048 before sending. Only you and your recipient can read them.
+                Messages are transmitted securely with basic privacy protection and input sanitization.
               </CardDescription>
             </CardContent>
           </Card>
@@ -93,11 +89,11 @@ export default function Home() {
               <div className="p-3 bg-blue-100 dark:bg-blue-900/20 rounded-xl w-fit mx-auto mb-3">
                 <Zap className="h-6 w-6 text-blue-600" />
               </div>
-              <CardTitle className="text-lg">Real-time Messaging</CardTitle>
+              <CardTitle className="text-lg">Lightning Fast</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription className="text-center">
-                Powered by Pusher for instant message delivery. See when others are online and typing.
+                Optimized message delivery with smart chunking for large messages and efficient processing.
               </CardDescription>
             </CardContent>
           </Card>
@@ -107,11 +103,11 @@ export default function Home() {
               <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-xl w-fit mx-auto mb-3">
                 <Users className="h-6 w-6 text-purple-600" />
               </div>
-              <CardTitle className="text-lg">Simple & Secure</CardTitle>
+              <CardTitle className="text-lg">Simple & Reliable</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription className="text-center">
-                No registration required. Just enter a username and start chatting securely with anyone.
+                No registration required. Just enter a username and start chatting with reliable message delivery.
               </CardDescription>
             </CardContent>
           </Card>
@@ -123,7 +119,7 @@ export default function Home() {
             <CardHeader className="text-center">
               <CardTitle className="text-2xl">Join SecureChat</CardTitle>
               <CardDescription>
-                Enter a username to start secure messaging
+                Enter a username to start messaging
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -136,6 +132,7 @@ export default function Home() {
                   onKeyPress={handleKeyPress}
                   className="text-center text-lg h-12"
                   disabled={isLoading}
+                  maxLength={20}
                 />
               </div>
               <Button
@@ -157,7 +154,7 @@ export default function Home() {
                 )}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                Your encryption keys are generated locally and never leave your device
+                Your messages are processed efficiently with optimized delivery
               </p>
             </CardContent>
           </Card>
@@ -165,7 +162,7 @@ export default function Home() {
 
         {/* Footer */}
         <div className="text-center mt-12 text-sm text-muted-foreground">
-          <p>Built with Next.js, Supabase, and Pusher • Encrypted with Web Crypto API</p>
+          <p>Built with Next.js and Supabase • Optimized for Performance</p>
         </div>
       </div>
     </div>
