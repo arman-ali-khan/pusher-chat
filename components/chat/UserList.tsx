@@ -58,7 +58,7 @@ export default function UserList({ users, currentUsername, selectedUser, onSelec
             <div className="flex items-center gap-2">
               <h2 className="font-semibold truncate">{currentUsername}</h2>
               {currentUsername === 'arman' && (
-                <Crown className="h-4 w-4 text-yellow-500" title="Admin" />
+               <span  title="Admin"><Crown className="h-4 w-4 text-yellow-500"/></span>
               )}
             </div>
             <p className="text-sm text-muted-foreground">
@@ -108,7 +108,7 @@ export default function UserList({ users, currentUsername, selectedUser, onSelec
                       <div className="flex items-center gap-2">
                         <div className="font-medium truncate">{user.username}</div>
                         {user.username === 'arman' && (
-                          <Crown className="h-3 w-3 text-yellow-500" title="Admin" />
+ <span  title="Admin"><Crown className="h-3 w-3 text-yellow-500"/></span>
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
