@@ -110,10 +110,10 @@ export default function MessageBubble({
                 <span>{formatTime(message.timestamp)}</span>
                 {message.content_type === 'image' && <ImageIcon className="h-3 w-3" />}
                 {message.isEdited && (
-                  <span className="text-xs opacity-60 flex items-center gap-1">
+                  <div className="flex items-center gap-1 text-xs opacity-60" title="Message edited">
                     <Edit className="h-3 w-3" />
-                    edited
-                  </span>
+                    <span>edited</span>
+                  </div>
                 )}
               </div>
               
@@ -123,29 +123,41 @@ export default function MessageBubble({
             </div>
           </div>
 
-          {/* Message actions */}
-          {isOwn && canEdit && (
-            <div className="absolute -right-8 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 hover:bg-background/20"
-                  >
-                    <MoreVertical className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={() => setIsEditDialogOpen(true)}
-                    disabled={!canEdit || message.content_type !== 'text'}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Message
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+          {/* Message actions - Show edit button directly for own messages */}
+          {isOwn && (
+            <div className="absolute -right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              {canEdit && message.content_type === 'text' ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditDialogOpen(true)}
+                  className="h-8 w-8 p-0 hover:bg-background/20 rounded-full"
+                  title="Edit message"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-background/20 rounded-full"
+                    >
+                      <MoreVertical className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => setIsEditDialogOpen(true)}
+                      disabled={!canEdit || message.content_type !== 'text'}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit Message
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           )}
         </div>
