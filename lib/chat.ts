@@ -237,7 +237,7 @@ export async function getUsers(): Promise<User[]> {
 }
 
 /**
- * Create or update user (simplified)
+ * Create or update user (simplified and fixed)
  */
 export async function createOrUpdateUser(username: string): Promise<boolean> {
   try {
@@ -255,16 +255,48 @@ export async function createOrUpdateUser(username: string): Promise<boolean> {
       return false;
     }
 
-    const { error } = await supabase
+    // First, try to check if user exists
+    const { data: existingUser, error: checkError } = await supabase
       .from('users')
-      .upsert({
-        username: sanitizedUsername,
-        last_seen: new Date().toISOString(),
-      });
+      .select('username')
+      .eq('username', sanitizedUsername)
+      .single();
 
-    if (error) {
-      console.error('Error creating/updating user:', error);
+    if (checkError && checkError.code !== 'PGRST116') {
+      // PGRST116 is "not found" error, which is expected for new users
+      console.error('Error checking existing user:', checkError);
       return false;
+    }
+
+    const now = new Date().toISOString();
+
+    if (existingUser) {
+      // User exists, update last_seen
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          last_seen: now 
+        })
+        .eq('username', sanitizedUsername);
+
+      if (updateError) {
+        console.error('Error updating user:', updateError);
+        return false;
+      }
+    } else {
+      // User doesn't exist, create new user
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          username: sanitizedUsername,
+          last_seen: now,
+          created_at: now
+        });
+
+      if (insertError) {
+        console.error('Error creating user:', insertError);
+        return false;
+      }
     }
 
     return true;
