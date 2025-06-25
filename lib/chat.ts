@@ -53,7 +53,7 @@ export async function sendMessage(
       content: content,
       content_type: contentType,
       status: 'sent',
-      timestamp: new Date().toISOString()
+      message_timestamp: new Date().toISOString()
     };
 
     const { error } = await supabase
@@ -99,7 +99,7 @@ async function sendLargeMessage(
       content: chunk,
       content_type: 'text',
       status: 'sent',
-      timestamp: timestamp,
+      message_timestamp: timestamp,
       chunk_info: {
         message_id: messageId,
         chunk_index: index,
@@ -137,7 +137,7 @@ export async function getMessages(
       .from('messages')
       .select('*')
       .or(`and(sender_username.eq.${currentUsername},receiver_username.eq.${otherUsername}),and(sender_username.eq.${otherUsername},receiver_username.eq.${currentUsername})`)
-      .order('timestamp', { ascending: true })
+      .order('message_timestamp', { ascending: true })
       .limit(100); // Limit to recent messages for performance
 
     if (error) {
@@ -156,7 +156,7 @@ export async function getMessages(
       receiver_username: message.receiver_username,
       content: message.content,
       content_type: message.content_type,
-      timestamp: message.timestamp,
+      timestamp: message.message_timestamp,
       status: message.status || 'sent',
       is_edited: message.is_edited || false,
       edited_at: message.edited_at
@@ -305,7 +305,7 @@ export async function setTypingStatus(
           username,
           conversation_with: conversationWith,
           is_typing: true,
-          timestamp: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         });
     } else {
       // Remove typing status
@@ -333,7 +333,7 @@ export async function getTypingStatus(
       .select('*')
       .eq('conversation_with', currentUsername)
       .eq('username', otherUsername)
-      .gte('timestamp', new Date(Date.now() - 10000).toISOString()); // Only get recent typing (within 10 seconds)
+      .gte('updated_at', new Date(Date.now() - 10000).toISOString()); // Only get recent typing (within 10 seconds)
 
     if (error) {
       console.error('Error fetching typing status:', error);
@@ -343,7 +343,7 @@ export async function getTypingStatus(
     return (typingData || []).map(item => ({
       username: item.username,
       isTyping: item.is_typing,
-      timestamp: item.timestamp,
+      timestamp: item.updated_at,
     }));
   } catch (error) {
     console.error('Error in getTypingStatus:', error);

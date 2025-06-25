@@ -32,7 +32,7 @@ export type Database = {
           receiver_username: string;
           content: string;
           content_type: string;
-          timestamp: string;
+          message_timestamp: string;
           status?: string;
           is_edited?: boolean;
           edited_at?: string;
@@ -40,6 +40,7 @@ export type Database = {
           chunk_info?: any;
           original_receiver?: string;
           created_at: string;
+          updated_at?: string;
         };
         Insert: {
           id?: string;
@@ -47,7 +48,7 @@ export type Database = {
           receiver_username: string;
           content: string;
           content_type?: string;
-          timestamp?: string;
+          message_timestamp?: string;
           status?: string;
           is_edited?: boolean;
           edited_at?: string;
@@ -55,6 +56,7 @@ export type Database = {
           chunk_info?: any;
           original_receiver?: string;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -62,7 +64,7 @@ export type Database = {
           receiver_username?: string;
           content?: string;
           content_type?: string;
-          timestamp?: string;
+          message_timestamp?: string;
           status?: string;
           is_edited?: boolean;
           edited_at?: string;
@@ -70,6 +72,7 @@ export type Database = {
           chunk_info?: any;
           original_receiver?: string;
           created_at?: string;
+          updated_at?: string;
         };
       };
       typing_status: {
@@ -78,21 +81,21 @@ export type Database = {
           username: string;
           conversation_with: string;
           is_typing: boolean;
-          timestamp: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
           username: string;
           conversation_with: string;
           is_typing?: boolean;
-          timestamp?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
           username?: string;
           conversation_with?: string;
           is_typing?: boolean;
-          timestamp?: string;
+          updated_at?: string;
         };
       };
       message_reads: {

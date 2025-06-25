@@ -94,7 +94,7 @@ export async function editMessage(
     }
 
     // Check if message is within 5-minute edit window
-    const messageTime = new Date(originalMessage.timestamp);
+    const messageTime = new Date(originalMessage.message_timestamp);
     const now = new Date();
     const timeDiff = now.getTime() - messageTime.getTime();
     const fiveMinutes = 5 * 60 * 1000;
@@ -117,7 +117,7 @@ export async function editMessage(
     const editHistory = originalMessage.edit_history || [];
     editHistory.push({
       content: originalMessage.content,
-      editedAt: originalMessage.edited_at || originalMessage.timestamp
+      editedAt: originalMessage.edited_at || originalMessage.message_timestamp
     });
 
     // Update the message
