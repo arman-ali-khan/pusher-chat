@@ -2,7 +2,7 @@
 
 import { Message } from '@/lib/chat';
 import { formatDistanceToNow } from 'date-fns';
-import { Image as ImageIcon, AlertCircle, Edit, MoreVertical } from 'lucide-react';
+import { Image as ImageIcon, AlertCircle, Edit, MoreVertical, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { MessageStatus, MessageStatusType } from './MessageStatus';
@@ -110,7 +110,10 @@ export default function MessageBubble({
                 <span>{formatTime(message.timestamp)}</span>
                 {message.content_type === 'image' && <ImageIcon className="h-3 w-3" />}
                 {message.isEdited && (
-                  <span className="text-xs opacity-60">(edited)</span>
+                  <span className="text-xs opacity-60 flex items-center gap-1">
+                    <Edit className="h-3 w-3" />
+                    edited
+                  </span>
                 )}
               </div>
               

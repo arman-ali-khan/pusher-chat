@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
+import { Check, CheckCheck, Clock, AlertCircle, Edit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type MessageStatusType = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -8,9 +8,10 @@ export type MessageStatusType = 'sending' | 'sent' | 'delivered' | 'read' | 'fai
 interface MessageStatusProps {
   status: MessageStatusType;
   className?: string;
+  isEdited?: boolean;
 }
 
-export function MessageStatus({ status, className }: MessageStatusProps) {
+export function MessageStatus({ status, className, isEdited }: MessageStatusProps) {
   const getStatusIcon = () => {
     switch (status) {
       case 'sending':
@@ -46,8 +47,9 @@ export function MessageStatus({ status, className }: MessageStatusProps) {
   };
 
   return (
-    <div className={cn('flex items-center', getStatusColor(), className)}>
+    <div className={cn('flex items-center gap-1', getStatusColor(), className)}>
       {getStatusIcon()}
+      {isEdited && <Edit className="h-3 w-3" />}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow } from 'date-fns';
-import { MessageCircle, Circle } from 'lucide-react';
+import { MessageCircle, Circle, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface UserListProps {
@@ -16,7 +16,16 @@ interface UserListProps {
 }
 
 export default function UserList({ users, currentUsername, selectedUser, onSelectUser }: UserListProps) {
-  const otherUsers = users.filter(user => user.username !== currentUsername);
+  // Filter users based on current user
+  const filteredUsers = users.filter(user => {
+    if (currentUsername === 'arman') {
+      // Show all users except arman himself
+      return user.username !== currentUsername;
+    } else {
+      // Show only arman for other users
+      return user.username === 'arman';
+    }
+  });
 
   const isOnline = (lastSeen: string) => {
     const lastSeenDate = new Date(lastSeen);
@@ -46,8 +55,15 @@ export default function UserList({ users, currentUsername, selectedUser, onSelec
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold truncate">{currentUsername}</h2>
-            <p className="text-sm text-muted-foreground">Your account</p>
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold truncate">{currentUsername}</h2>
+              {currentUsername === 'arman' && (
+                <Crown className="h-4 w-4 text-yellow-500" title="Admin" />
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {currentUsername === 'arman' ? 'Admin Account' : 'Your account'}
+            </p>
           </div>
         </div>
       </div>
@@ -56,10 +72,13 @@ export default function UserList({ users, currentUsername, selectedUser, onSelec
         <ScrollArea className="h-full">
           <div className="p-2">
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2">
-              Users ({otherUsers.length})
+              {currentUsername === 'arman' 
+                ? `All Users (${filteredUsers.length})` 
+                : `Available (${filteredUsers.length})`
+              }
             </h3>
             <div className="space-y-1">
-              {otherUsers.map((user) => (
+              {filteredUsers.map((user) => (
                 <Button
                   key={user.username}
                   variant={selectedUser === user.username ? "secondary" : "ghost"}
@@ -86,7 +105,12 @@ export default function UserList({ users, currentUsername, selectedUser, onSelec
                       />
                     </div>
                     <div className="flex-1 text-left min-w-0">
-                      <div className="font-medium truncate">{user.username}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium truncate">{user.username}</div>
+                        {user.username === 'arman' && (
+                          <Crown className="h-3 w-3 text-yellow-500" title="Admin" />
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground truncate">
                         {formatLastSeen(user.last_seen)}
                       </div>
@@ -95,11 +119,21 @@ export default function UserList({ users, currentUsername, selectedUser, onSelec
                   </div>
                 </Button>
               ))}
-              {otherUsers.length === 0 && (
+              {filteredUsers.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No other users online</p>
-                  <p className="text-xs">Ask someone to join!</p>
+                  <p className="text-sm">
+                    {currentUsername === 'arman' 
+                      ? 'No other users online' 
+                      : 'Admin not available'
+                    }
+                  </p>
+                  <p className="text-xs">
+                    {currentUsername === 'arman' 
+                      ? 'Waiting for users to join...' 
+                      : 'Please wait for admin to come online'
+                    }
+                  </p>
                 </div>
               )}
             </div>

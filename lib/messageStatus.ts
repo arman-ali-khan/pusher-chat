@@ -226,3 +226,29 @@ export async function getUnreadMessageCount(
     return 0;
   }
 }
+
+/**
+ * Get edit history for a message
+ */
+export async function getMessageEditHistory(messageId: string): Promise<Array<{
+  content: string;
+  editedAt: string;
+}>> {
+  try {
+    const { data: message, error } = await supabase
+      .from('messages')
+      .select('edit_history')
+      .eq('id', messageId)
+      .single();
+
+    if (error || !message) {
+      console.error('Error fetching message edit history:', error);
+      return [];
+    }
+
+    return message.edit_history || [];
+  } catch (error) {
+    console.error('Error in getMessageEditHistory:', error);
+    return [];
+  }
+}

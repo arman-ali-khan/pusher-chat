@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Save, X } from 'lucide-react';
+import { Save, X, Clock } from 'lucide-react';
 
 interface EditMessageDialogProps {
   isOpen: boolean;
@@ -30,6 +30,10 @@ export function EditMessageDialog({
       return;
     }
 
+    if (!editedContent.trim()) {
+      return;
+    }
+
     setIsSaving(true);
     try {
       const success = await onSave(editedContent.trim());
@@ -48,11 +52,23 @@ export function EditMessageDialog({
     onClose();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSave();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleClose();
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
+            <Edit className="h-4 w-4" />
             Edit Message
           </DialogTitle>
         </DialogHeader>
@@ -61,14 +77,21 @@ export function EditMessageDialog({
           <Textarea
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Edit your message..."
             className="min-h-[100px] resize-none"
             disabled={isSaving || isLoading}
             autoFocus
+            maxLength={2000}
           />
           
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>You can edit this message within 5 minutes of sending.</span>
+          </div>
+          
           <div className="text-xs text-muted-foreground">
-            You can edit this message within 5 minutes of sending.
+            Press Ctrl+Enter to save, Esc to cancel
           </div>
         </div>
 
@@ -83,7 +106,7 @@ export function EditMessageDialog({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={!editedContent.trim() || isSaving || isLoading}
+            disabled={!editedContent.trim() || editedContent.trim() === currentContent.trim() || isSaving || isLoading}
           >
             {isSaving ? (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
